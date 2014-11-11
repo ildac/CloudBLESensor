@@ -18,52 +18,107 @@
 */
 
 var noble = require('noble');
-var connectedBean = null;
 
-// on startup start scanning for BLE devices
+// SSID hardcoded because I keep forgot it :-)
+var peripheralUuid = process.argv[2] || '26d6ee41059049ac975051e960ff2ca3';
+
 noble.on('stateChange', function(state) {
   if (state === 'poweredOn') {
     noble.startScanning();
-    console.log('Scanning for BLE devices...');
   } else {
     noble.stopScanning();
-    console.log('State changed to ' + '. Scanning stopped.');
   }
 });
 
-// when a device is discovered, noble connects to it
 noble.on('discover', function(peripheral) {
-  peripheral.connect(function(error) {
-    console.log('connected to peripheral: ' + peripheral.uuid);
-    peripheral.discoverServices(null, function(error, services) {
-      console.log('discovered the following services:');
-      for (var i in services) {
-        console.log('  ' + i + ' uuid: ' + services[i].uuid);
-      }
-    });
-  });
-  connectedBean = peripheral;
+  if (peripheral.uuid === peripheralUuid) {
+    noble.stopScanning();
+
+    console.log('peripheral with UUID ' + peripheralUuid + ' found');
+    var advertisement = peripheral.advertisement;
+
+    var localName = advertisement.localName;
+    var txPowerLevel = advertisement.txPowerLevel;
+    var manufacturerData = advertisement.manufacturerData;
+    var serviceData = advertisement.serviceData;
+    var serviceUuids = advertisement.serviceUuids;
+
+    if (localName) {
+      console.log('  Local Name        = ' + localName);
+    }
+
+    if (txPowerLevel) {
+      console.log('  TX Power Level    = ' + txPowerLevel);
+    }
+
+    if (manufacturerData) {
+      console.log('  Manufacturer Data = ' + manufacturerData.toString('hex'));
+    }
+
+    if (serviceData) {
+      console.log('  Service Data      = ' + serviceData);
+    }
+
+    if (localName) {
+      console.log('  Service UUIDs     = ' + serviceUuids);
+    }
+
+    console.log();
+
+    explore(peripheral);
+  }
 });
 
+function explore(peripheral) {
+  console.log('services and characteristics:');
 
-// to keep the server running
-process.stdin.resume();
+  peripheral.on('disconnect', function() {
+		console.log('disconnected...');
+    process.exit(0);
+  });
 
-// to close gently
-var triedToExit = false;
+  peripheral.connect(function(error) {
+	  peripheral.discoverServices(['FFE0'], function(error, services) {
+    console.log('discovered service: ' + services[0].uuid);
 
-function exitHandler(options, err) {
-  if (connectedBean && !triedToExit) {
-    triedToExit = true;
-    console.log('Disconnecting...');
-    connectedBean.disconnect(function(err) {
-      console.log('Disconnected.');
-      process.exit();
-    });
-  } else {
-    process.exit();
-  }
-}
+    // discover notify characteristic (where we read tx from BLE device)
+	    services[0].discoverCharacteristics(['FFE1'], function (error, characteristics) {
+	      console.log('discovered characteristic: ', characteristics[0].uuid);
+			  var txCharacteristic = characteristics[0];
+				txCharacteristic.notify(true, function (error) {
+						console.log("notification is on");
+						txCharacteristic.on('read', function(data, isNotification) {
+							console.log('isNotification: ', isNotification);
+	          	console.log('reading data: ', data);
+							console.log('reading data UInt8: ', data.readUInt8(0));
 
-// catches ctrl+c event
-process.on('SIGINT', exitHandler.bind(null, {exit:true}));
+						});
+				});
+			});
+	  });
+	});
+
+	// to keep the server running
+	process.stdin.resume();
+
+	// to close gently
+	var triedToExit = false;
+
+	function exitHandler(options, err) {
+		if (peripheral && !triedToExit) {
+			triedToExit = true;
+			console.log('Disconnecting...');
+			peripheral.disconnect(function(err) {
+				console.log('Disconnected.');
+				process.exit();
+			});
+		} else {
+			process.exit();
+		}
+	}
+
+	// catches ctrl+c event
+	process.on('SIGINT', exitHandler.bind(null, {exit:true}));
+
+
+};

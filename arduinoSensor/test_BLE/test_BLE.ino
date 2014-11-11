@@ -7,7 +7,6 @@ SoftwareSerial bluetooth(bluetoothTx, bluetoothRx);
 
 void setup()
 {
-  delay(2000);
   Serial.begin(9600);  // Begin the serial monitor at 9600bps
 
   bluetooth.begin(115200);  // The Bluetooth Mate defaults to 115200bps
@@ -19,7 +18,7 @@ void setup()
 }
 
 void loop()
-{
+{ 
   if(bluetooth.available())  // If the bluetooth sent any characters
   {
     // Send any characters the bluetooth prints to the serial monitor
